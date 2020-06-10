@@ -1,0 +1,4 @@
+rootProject.name = "BleSample"
+include ':BleLibrary'
+include ':BluetoothLeGatt'
+include ':BluetoothAdvertisements'
