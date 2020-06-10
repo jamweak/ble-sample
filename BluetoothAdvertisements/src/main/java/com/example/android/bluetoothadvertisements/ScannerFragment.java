@@ -35,6 +35,9 @@ import android.widget.Toast;
 
 import androidx.fragment.app.ListFragment;
 
+import com.sample.ble.library.common.Constants;
+import com.sample.ble.library.utils.ScanUtil;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -149,7 +152,8 @@ public class ScannerFragment extends ListFragment {
 
             // Kick off a new scan.
             mScanCallback = new SampleScanCallback();
-            mBluetoothLeScanner.startScan(buildScanFilters(), buildScanSettings(), mScanCallback);
+            mBluetoothLeScanner.startScan(ScanUtil.buildScanFilters(), ScanUtil.buildScanSettings(),
+                    mScanCallback);
 
             String toastText = getString(R.string.scan_start_toast) + " "
                     + TimeUnit.SECONDS.convert(SCAN_PERIOD, TimeUnit.MILLISECONDS) + " "
@@ -172,29 +176,6 @@ public class ScannerFragment extends ListFragment {
 
         // Even if no new results, update 'last seen' times.
         mAdapter.notifyDataSetChanged();
-    }
-
-    /**
-     * Return a List of {@link ScanFilter} objects to filter by Service UUID.
-     */
-    private List<ScanFilter> buildScanFilters() {
-        List<ScanFilter> scanFilters = new ArrayList<>();
-
-        ScanFilter.Builder builder = new ScanFilter.Builder();
-        // Comment out the below line to see all BLE devices around you
-        builder.setServiceUuid(Constants.Service_UUID);
-        scanFilters.add(builder.build());
-
-        return scanFilters;
-    }
-
-    /**
-     * Return a {@link ScanSettings} object set to use low power (to preserve battery life).
-     */
-    private ScanSettings buildScanSettings() {
-        ScanSettings.Builder builder = new ScanSettings.Builder();
-        builder.setScanMode(ScanSettings.SCAN_MODE_LOW_POWER);
-        return builder.build();
     }
 
     /**

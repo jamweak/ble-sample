@@ -22,6 +22,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.WindowManager;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -32,46 +33,38 @@ import androidx.fragment.app.FragmentTransaction;
  * Setup display fragments and ensure the device supports Bluetooth.
  */
 public class MainActivity extends FragmentActivity {
-
+    public static final int REQUEST_ENABLE_BT = 1;
     private BluetoothAdapter mBluetoothAdapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setTitle(R.string.activity_main_title);
 
         if (savedInstanceState == null) {
-
             mBluetoothAdapter = ((BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE))
                     .getAdapter();
 
             // Is Bluetooth supported on this device?
             if (mBluetoothAdapter != null) {
-
                 // Is Bluetooth turned on?
                 if (mBluetoothAdapter.isEnabled()) {
-
                     // Are Bluetooth Advertisements supported on this device?
                     if (mBluetoothAdapter.isMultipleAdvertisementSupported()) {
-
-                        Log.d("xxx", mBluetoothAdapter.getAddress());
                         // Everything is supported and enabled, load the fragments.
                         setupFragments();
-
                     } else {
-
                         // Bluetooth Advertisements are not supported.
                         showErrorText(R.string.bt_ads_not_supported);
                     }
                 } else {
-
                     // Prompt user to turn on Bluetooth (logic continues in onActivityResult()).
                     Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-                    startActivityForResult(enableBtIntent, Constants.REQUEST_ENABLE_BT);
+                    startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
                 }
             } else {
-
                 // Bluetooth is not supported.
                 showErrorText(R.string.bt_not_supported);
             }
@@ -82,30 +75,23 @@ public class MainActivity extends FragmentActivity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         switch (requestCode) {
-            case Constants.REQUEST_ENABLE_BT:
-
+            case REQUEST_ENABLE_BT:
                 if (resultCode == RESULT_OK) {
-
                     // Bluetooth is now Enabled, are Bluetooth Advertisements supported on
                     // this device?
                     if (mBluetoothAdapter.isMultipleAdvertisementSupported()) {
-
                         // Everything is supported and enabled, load the fragments.
                         setupFragments();
-
                     } else {
-
                         // Bluetooth Advertisements are not supported.
                         showErrorText(R.string.bt_ads_not_supported);
                     }
                 } else {
-
                     // User declined to enable Bluetooth, exit the app.
                     Toast.makeText(this, R.string.bt_not_enabled_leaving,
                             Toast.LENGTH_SHORT).show();
                     finish();
                 }
-
             default:
                 super.onActivityResult(requestCode, resultCode, data);
         }
@@ -114,10 +100,10 @@ public class MainActivity extends FragmentActivity {
     private void setupFragments() {
         FragmentTransaction transaction = getSupportFragmentManager().beginTransaction();
 
-        ScannerFragment scannerFragment = new ScannerFragment();
+       /* ScannerFragment scannerFragment = new ScannerFragment();
         // Fragments can't access system services directly, so pass it the BluetoothAdapter
         scannerFragment.setBluetoothAdapter(mBluetoothAdapter);
-        transaction.replace(R.id.scanner_fragment_container, scannerFragment);
+        transaction.replace(R.id.scanner_fragment_container, scannerFragment);*/
 
         AdvertiserFragment advertiserFragment = new AdvertiserFragment();
         transaction.replace(R.id.advertiser_fragment_container, advertiserFragment);
@@ -126,7 +112,6 @@ public class MainActivity extends FragmentActivity {
     }
 
     private void showErrorText(int messageId) {
-
         TextView view = (TextView) findViewById(R.id.error_textview);
         view.setText(getString(messageId));
     }

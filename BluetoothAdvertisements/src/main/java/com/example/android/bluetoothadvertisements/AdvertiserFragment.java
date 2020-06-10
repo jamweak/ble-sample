@@ -34,7 +34,6 @@ import androidx.fragment.app.Fragment;
  * Allows user to start & stop Bluetooth LE Advertising of their device.
  */
 public class AdvertiserFragment extends Fragment implements View.OnClickListener {
-
     /**
      * Lets user toggle BLE Advertising.
      */

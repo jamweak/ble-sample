@@ -6,6 +6,11 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothGattCharacteristic;
+import android.bluetooth.BluetoothGattDescriptor;
+import android.bluetooth.BluetoothGattServer;
+import android.bluetooth.BluetoothGattServerCallback;
+import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.le.AdvertiseCallback;
 import android.bluetooth.le.AdvertiseData;
@@ -15,9 +20,14 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.ParcelUuid;
+import android.os.SystemClock;
 import android.util.Log;
 import android.widget.Toast;
 
+import com.sample.ble.library.common.Constants;
+
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -26,9 +36,7 @@ import java.util.concurrent.TimeUnit;
  * Service is maintaining the necessary Callback in memory.
  */
 public class AdvertiserService extends Service {
-
     private static final String TAG = AdvertiserService.class.getSimpleName();
-
     private static final int FOREGROUND_NOTIFICATION_ID = 1;
 
     /**
@@ -47,6 +55,8 @@ public class AdvertiserService extends Service {
     public static final int ADVERTISING_TIMED_OUT = 6;
 
     private BluetoothLeAdvertiser mBluetoothLeAdvertiser;
+    private BluetoothGattServer mGattServer;
+    private BluetoothGattServerCallback mGattServerCallback;
 
     private AdvertiseCallback mAdvertiseCallback;
 
@@ -54,17 +64,11 @@ public class AdvertiserService extends Service {
 
     private Runnable timeoutRunnable;
 
-    /**
-     * Length of time to allow advertising before automatically shutting off. (10 minutes)
-     */
-    private long TIMEOUT = TimeUnit.MILLISECONDS.convert(10, TimeUnit.MINUTES);
-
     @Override
     public void onCreate() {
         running = true;
         initialize();
         startAdvertising();
-        setTimeout();
         super.onCreate();
     }
 
@@ -95,12 +99,14 @@ public class AdvertiserService extends Service {
      * Get references to system Bluetooth objects if we don't have them already.
      */
     private void initialize() {
+        mGattServerCallback = new BluetoothGattServerCallbackImpl();
         if (mBluetoothLeAdvertiser == null) {
             BluetoothManager mBluetoothManager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
             if (mBluetoothManager != null) {
                 BluetoothAdapter mBluetoothAdapter = mBluetoothManager.getAdapter();
                 if (mBluetoothAdapter != null) {
                     mBluetoothLeAdvertiser = mBluetoothAdapter.getBluetoothLeAdvertiser();
+                    prepareGattServices(mBluetoothManager);
                 } else {
                     Toast.makeText(this, getString(R.string.bt_null), Toast.LENGTH_LONG).show();
                 }
@@ -108,24 +114,43 @@ public class AdvertiserService extends Service {
                 Toast.makeText(this, getString(R.string.bt_null), Toast.LENGTH_LONG).show();
             }
         }
-
     }
 
-    /**
-     * Starts a delayed Runnable that will cause the BLE Advertising to timeout and stop after a
-     * set amount of time.
-     */
-    private void setTimeout() {
-        mHandler = new Handler();
-        timeoutRunnable = new Runnable() {
-            @Override
-            public void run() {
-                Log.d(TAG, "AdvertiserService has reached timeout of " + TIMEOUT + " milliseconds, stopping advertising.");
-                sendFailureIntent(ADVERTISING_TIMED_OUT);
-                stopSelf();
+    private void prepareGattServices(BluetoothManager bluetoothManager) {
+        int retryCount = 0;
+        // Retry only 3 times which is less than ANR threshold 5 seconds.
+        while (mGattServer == null && retryCount++ < 3) {
+            Log.w(TAG, "Gatt server is null, try to get it");
+            SystemClock.sleep(1000);
+            mGattServer = bluetoothManager.openGattServer(this, mGattServerCallback);
+
+            if (mGattServer != null) {
+                Log.d(TAG, "prepare gatt server");
+                try {
+                    BluetoothGattService service = new BluetoothGattService(
+                            UUID.fromString(Constants.SBM_Service_UUID),
+                            BluetoothGattService.SERVICE_TYPE_PRIMARY);
+                    service.addCharacteristic(new BluetoothGattCharacteristic(
+                            UUID.fromString(Constants.SBM_WRITE_CHARACTERISTIC_UUID),
+                            BluetoothGattCharacteristic.PROPERTY_WRITE,
+                            BluetoothGattCharacteristic.PERMISSION_WRITE_ENCRYPTED));
+                    BluetoothGattCharacteristic readCharacteristic = new BluetoothGattCharacteristic(
+                            UUID.fromString(Constants.SBM_READ_CHARACTERISTIC_UUID),
+                            BluetoothGattCharacteristic.PROPERTY_NOTIFY
+                                    | BluetoothGattCharacteristic.PROPERTY_READ,
+                            BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED);
+                    readCharacteristic.addDescriptor(
+                            new BluetoothGattDescriptor(UUID.fromString("00002902-0000-1000-8000-00805F9B34FB"),
+                                    BluetoothGattDescriptor.PERMISSION_READ_ENCRYPTED
+                                            | BluetoothGattDescriptor.PERMISSION_WRITE_ENCRYPTED));
+                    service.addCharacteristic(readCharacteristic);
+                    mGattServer.addService(service);
+                } catch (Exception e) {
+                    Log.w(TAG, "Failed to add service", e);
+                    mGattServer = null;
+                }
             }
-        };
-        mHandler.postDelayed(timeoutRunnable, TIMEOUT);
+        }
     }
 
     /**
@@ -190,7 +215,6 @@ public class AdvertiserService extends Service {
      * Returns an AdvertiseData object which includes the Service UUID and Device Name.
      */
     private AdvertiseData buildAdvertiseData() {
-
         /**
          * Note: There is a strict limit of 31 Bytes on packets sent over BLE Advertisements.
          *  This includes everything put into AdvertiseData including UUIDs, device info, &
@@ -201,7 +225,7 @@ public class AdvertiserService extends Service {
          */
 
         AdvertiseData.Builder dataBuilder = new AdvertiseData.Builder();
-        dataBuilder.addServiceUuid(Constants.Service_UUID);
+        dataBuilder.addServiceUuid(ParcelUuid.fromString(Constants.SBM_Service_UUID));
         dataBuilder.setIncludeDeviceName(true);
 
         /* For example - this will cause advertising to fail (exceeds size limit) */
@@ -235,7 +259,6 @@ public class AdvertiserService extends Service {
             Log.d(TAG, "Advertising failed");
             sendFailureIntent(errorCode);
             stopSelf();
-
         }
 
         @Override
@@ -255,5 +278,4 @@ public class AdvertiserService extends Service {
         failureIntent.putExtra(ADVERTISING_FAILED_EXTRA_CODE, errorCode);
         sendBroadcast(failureIntent);
     }
-
 }

@@ -16,7 +16,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.android.bluetoothadvertisements">
 
-<!--    <uses-feature android:name="android.hardware.type.watch" />-->
+    <uses-feature android:name="android.hardware.type.watch" />
 
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
     <uses-permission android:name="android.permission.BLUETOOTH" />
