@@ -29,6 +29,8 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.ParcelUuid;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -40,8 +42,11 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.sample.ble.library.utils.ScanUtil;
+import com.sample.ble.library.utils.StringUtils;
 
 import java.util.ArrayList;
+
+import static android.content.ContentValues.TAG;
 
 /**
  * Activity for scanning and displaying available Bluetooth LE devices.
@@ -258,6 +263,8 @@ public class DeviceScanActivity extends ListActivity {
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
+                    Log.d(TAG, "mLeScanCallback mLeScanCallback " + result.getRssi() + StringUtils.bytesToHexString(result.getScanRecord().getBytes()) + StringUtils.bytesToHexString(result.getScanRecord()
+                            .getServiceData(ParcelUuid.fromString("000ffa0-0000-1000-8000-00805f9b34fb"))));
                     mLeDeviceListAdapter.addDevice(result.getDevice());
                     mLeDeviceListAdapter.notifyDataSetChanged();
                 }

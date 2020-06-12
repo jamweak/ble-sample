@@ -6,6 +6,8 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothGatt;
 import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothGattDescriptor;
 import android.bluetooth.BluetoothGattServer;
@@ -16,8 +18,10 @@ import android.bluetooth.le.AdvertiseCallback;
 import android.bluetooth.le.AdvertiseData;
 import android.bluetooth.le.AdvertiseSettings;
 import android.bluetooth.le.BluetoothLeAdvertiser;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.ParcelUuid;
@@ -25,10 +29,20 @@ import android.os.SystemClock;
 import android.util.Log;
 import android.widget.Toast;
 
-import com.sample.ble.library.common.Constants;
+import androidx.annotation.WorkerThread;
 
+import com.sample.ble.library.common.Constants;
+import com.sample.ble.library.utils.StringUtils;
+
+import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+
+import static com.sample.ble.library.common.Constants.SBM_READ_CHARACTERISTIC_UUID;
+import static com.sample.ble.library.common.Constants.SBM_Service_UUID;
 
 /**
  * Manages BLE Advertising independent of the main app.
@@ -61,6 +75,7 @@ public class AdvertiserService extends Service {
     private AdvertiseCallback mAdvertiseCallback;
 
     private Handler mHandler;
+    private BluetoothDevice mDevice;
 
     private Runnable timeoutRunnable;
 
@@ -69,6 +84,9 @@ public class AdvertiserService extends Service {
         running = true;
         initialize();
         startAdvertising();
+        IntentFilter intentFilter = new IntentFilter();
+        intentFilter.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
+        registerReceiver(new BleStateReceive(), intentFilter);
         super.onCreate();
     }
 
@@ -98,10 +116,12 @@ public class AdvertiserService extends Service {
     /**
      * Get references to system Bluetooth objects if we don't have them already.
      */
+    BluetoothManager mBluetoothManager;
+
     private void initialize() {
         mGattServerCallback = new BluetoothGattServerCallbackImpl();
         if (mBluetoothLeAdvertiser == null) {
-            BluetoothManager mBluetoothManager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
+            mBluetoothManager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
             if (mBluetoothManager != null) {
                 BluetoothAdapter mBluetoothAdapter = mBluetoothManager.getAdapter();
                 if (mBluetoothAdapter != null) {
@@ -116,6 +136,31 @@ public class AdvertiserService extends Service {
         }
     }
 
+    private void startAdvertise() {
+        AdvertiseSettings mAdvertiseSettings = new AdvertiseSettings.Builder()
+                .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_POWER)
+                .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
+                .setTimeout(100)
+                .setConnectable(false)
+                .build();
+
+        AdvertiseData mAdvertiseData = new AdvertiseData.Builder()
+                .setIncludeDeviceName(true)
+                .setIncludeDeviceName(true)
+                .build();
+
+        AdvertiseData mScanResponseData = new AdvertiseData.Builder()
+                .setIncludeDeviceName(false)
+                .setIncludeDeviceName(false)
+                .addServiceUuid(ParcelUuid.fromString(SBM_Service_UUID))
+                .addManufacturerData(0x11, StringUtils.getHexBytes("123456"))
+                .build();
+
+        mBluetoothLeAdvertiser.startAdvertising(mAdvertiseSettings,
+                mAdvertiseData, mScanResponseData, mAdvertiseCallback);
+    }
+
+
     private void prepareGattServices(BluetoothManager bluetoothManager) {
         int retryCount = 0;
         // Retry only 3 times which is less than ANR threshold 5 seconds.
@@ -128,14 +173,14 @@ public class AdvertiserService extends Service {
                 Log.d(TAG, "prepare gatt server");
                 try {
                     BluetoothGattService service = new BluetoothGattService(
-                            UUID.fromString(Constants.SBM_Service_UUID),
+                            UUID.fromString(SBM_Service_UUID),
                             BluetoothGattService.SERVICE_TYPE_PRIMARY);
                     service.addCharacteristic(new BluetoothGattCharacteristic(
                             UUID.fromString(Constants.SBM_WRITE_CHARACTERISTIC_UUID),
                             BluetoothGattCharacteristic.PROPERTY_WRITE,
                             BluetoothGattCharacteristic.PERMISSION_WRITE_ENCRYPTED));
                     BluetoothGattCharacteristic readCharacteristic = new BluetoothGattCharacteristic(
-                            UUID.fromString(Constants.SBM_READ_CHARACTERISTIC_UUID),
+                            UUID.fromString(SBM_READ_CHARACTERISTIC_UUID),
                             BluetoothGattCharacteristic.PROPERTY_NOTIFY
                                     | BluetoothGattCharacteristic.PROPERTY_READ,
                             BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED);
@@ -225,7 +270,7 @@ public class AdvertiserService extends Service {
          */
 
         AdvertiseData.Builder dataBuilder = new AdvertiseData.Builder();
-        dataBuilder.addServiceUuid(ParcelUuid.fromString(Constants.SBM_Service_UUID));
+        dataBuilder.addServiceUuid(ParcelUuid.fromString(SBM_Service_UUID));
         dataBuilder.setIncludeDeviceName(true);
 
         /* For example - this will cause advertising to fail (exceeds size limit) */
@@ -277,5 +322,135 @@ public class AdvertiserService extends Service {
         failureIntent.setAction(ADVERTISING_FAILED);
         failureIntent.putExtra(ADVERTISING_FAILED_EXTRA_CODE, errorCode);
         sendBroadcast(failureIntent);
+    }
+
+    @WorkerThread
+    public void sendData(String data) {
+        BluetoothGattCharacteristic characteristic = mGattServer
+                .getService(UUID.fromString(SBM_Service_UUID))
+                .getCharacteristic(UUID.fromString(SBM_READ_CHARACTERISTIC_UUID));
+        characteristic.setValue(StringUtils.getHexBytes(data));
+        mGattServer.notifyCharacteristicChanged(mDevice, characteristic, false);
+
+    }
+
+
+    private class BluetoothGattServerCallbackImpl extends BluetoothGattServerCallback {
+        public BluetoothGattServerCallbackImpl() {
+            super();
+        }
+
+        @Override
+        public void onConnectionStateChange(BluetoothDevice device, int status, int newState) {
+            super.onConnectionStateChange(device, status, newState);
+        }
+
+        @Override
+        public void onServiceAdded(int status, BluetoothGattService service) {
+            super.onServiceAdded(status, service);
+        }
+
+        @Override
+        public void onCharacteristicReadRequest(BluetoothDevice device, int requestId, int offset, BluetoothGattCharacteristic characteristic) {
+            super.onCharacteristicReadRequest(device, requestId, offset, characteristic);
+            Log.d(TAG, String.format("onCharacteristicReadRequest requestId=%d " +
+                            "characteristic=%s " +
+                            "  offset=%d  value=%s ",
+                    requestId, characteristic.getUuid().toString(),
+                    offset, "" + StringUtils.bytesToHexString(characteristic.getValue())));
+            byte[] b = new byte[8];
+            new Random().nextBytes(b);
+            mGattServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, b);
+        }
+
+        @Override
+        public void onCharacteristicWriteRequest(BluetoothDevice device, int requestId, BluetoothGattCharacteristic characteristic, boolean preparedWrite, boolean responseNeeded, int offset, byte[] value) {
+            super.onCharacteristicWriteRequest(device, requestId, characteristic, preparedWrite, responseNeeded, offset, value);
+
+            Log.d(TAG, String.format("onCharacteristicWriteRequest requestId=%d " +
+                            "characteristic=%s " +
+                            "preparedWrite=%b responseNeeded=%b offset=%d byte=%s",
+                    requestId, characteristic.getUuid().toString(), preparedWrite, responseNeeded,
+                    offset, StringUtils.bytesToHexString(value)));
+            if (responseNeeded) {
+                mGattServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0,
+                        value);
+            }
+        }
+
+        @Override
+        public void onDescriptorReadRequest(BluetoothDevice device, int requestId, int offset, BluetoothGattDescriptor descriptor) {
+            super.onDescriptorReadRequest(device, requestId, offset, descriptor);
+        }
+
+        @Override
+        public void onDescriptorWriteRequest(BluetoothDevice device,
+                                             int requestId,
+                                             BluetoothGattDescriptor descriptor,
+                                             boolean preparedWrite,
+                                             boolean responseNeeded,
+                                             int offset,
+                                             byte[] value) {
+            Log.d(TAG, String.format("onDescriptorWriteRequest characteristic=%s requestId=%d " +
+                            "descriptor=%s preparedWrite=%b responseNeeded=%b offset=%d valueLen=%d",
+                    descriptor.getCharacteristic().getUuid(), requestId, descriptor.getUuid(),
+                    preparedWrite, responseNeeded, offset, value.length));
+            if (Arrays.equals(value, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)) {
+                mDevice = device;
+            }
+            if (responseNeeded) {
+                mGattServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0,
+                        null);
+            }
+            super.onDescriptorWriteRequest(device, requestId, descriptor, preparedWrite, responseNeeded, offset, value);
+        }
+
+
+        @Override
+        public void onExecuteWrite(BluetoothDevice device, int requestId, boolean execute) {
+            super.onExecuteWrite(device, requestId, execute);
+        }
+
+        @Override
+        public void onNotificationSent(BluetoothDevice device, int status) {
+            super.onNotificationSent(device, status);
+        }
+
+        @Override
+        public void onMtuChanged(BluetoothDevice device, int mtu) {
+            super.onMtuChanged(device, mtu);
+        }
+    }
+
+
+    private class BleStateReceive extends BroadcastReceiver {
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            switch (intent.getAction()) {
+                case BluetoothAdapter.ACTION_STATE_CHANGED:
+                    handleBluetoothAdapterStateChanged(intent);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    private void handleBluetoothAdapterStateChanged(Intent intent) {
+        int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1);
+        if (state == BluetoothAdapter.STATE_ON) {
+            mHandler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    if (mGattServer != null) {
+                        // STATE_OFF sometimes is missing. Manually set mGattServer to null so
+                        // prepareGattServices() can create a new mGattServer.
+                        mGattServer = null;
+                    }
+                    prepareGattServices(mBluetoothManager);
+                }
+            }, 5000);
+        }
     }
 }
