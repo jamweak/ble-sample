@@ -41,8 +41,8 @@ import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.sample.ble.library.utils.DigestEncodingUtils;
 import com.sample.ble.library.utils.ScanUtil;
-import com.sample.ble.library.utils.StringUtils;
 
 import java.util.ArrayList;
 
@@ -263,7 +263,9 @@ public class DeviceScanActivity extends ListActivity {
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    Log.d(TAG, "mLeScanCallback mLeScanCallback " + result.getRssi() + StringUtils.bytesToHexString(result.getScanRecord().getBytes()) + StringUtils.bytesToHexString(result.getScanRecord()
+                    Log.d(TAG, "mLeScanCallback mLeScanCallback " + result.getRssi()
+                            + DigestEncodingUtils.encodeWithHex(result.getScanRecord().getBytes())
+                            + DigestEncodingUtils.encodeWithHex(result.getScanRecord()
                             .getServiceData(ParcelUuid.fromString("000ffa0-0000-1000-8000-00805f9b34fb"))));
                     mLeDeviceListAdapter.addDevice(result.getDevice());
                     mLeDeviceListAdapter.notifyDataSetChanged();

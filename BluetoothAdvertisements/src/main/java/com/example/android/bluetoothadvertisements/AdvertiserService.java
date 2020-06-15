@@ -32,14 +32,11 @@ import android.widget.Toast;
 import androidx.annotation.WorkerThread;
 
 import com.sample.ble.library.common.Constants;
-import com.sample.ble.library.utils.StringUtils;
+import com.sample.ble.library.utils.DigestEncodingUtils;
 
-import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Random;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 import static com.sample.ble.library.common.Constants.SBM_READ_CHARACTERISTIC_UUID;
 import static com.sample.ble.library.common.Constants.SBM_Service_UUID;
@@ -153,7 +150,7 @@ public class AdvertiserService extends Service {
                 .setIncludeDeviceName(false)
                 .setIncludeDeviceName(false)
                 .addServiceUuid(ParcelUuid.fromString(SBM_Service_UUID))
-                .addManufacturerData(0x11, StringUtils.getHexBytes("123456"))
+                .addManufacturerData(0x11, DigestEncodingUtils.fromHexString("123456"))
                 .build();
 
         mBluetoothLeAdvertiser.startAdvertising(mAdvertiseSettings,
@@ -329,7 +326,7 @@ public class AdvertiserService extends Service {
         BluetoothGattCharacteristic characteristic = mGattServer
                 .getService(UUID.fromString(SBM_Service_UUID))
                 .getCharacteristic(UUID.fromString(SBM_READ_CHARACTERISTIC_UUID));
-        characteristic.setValue(StringUtils.getHexBytes(data));
+        characteristic.setValue((data));
         mGattServer.notifyCharacteristicChanged(mDevice, characteristic, false);
 
     }
@@ -357,7 +354,7 @@ public class AdvertiserService extends Service {
                             "characteristic=%s " +
                             "  offset=%d  value=%s ",
                     requestId, characteristic.getUuid().toString(),
-                    offset, "" + StringUtils.bytesToHexString(characteristic.getValue())));
+                    offset, "" + DigestEncodingUtils.encodeWithHex(characteristic.getValue())));
             byte[] b = new byte[8];
             new Random().nextBytes(b);
             mGattServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, b);
@@ -371,7 +368,7 @@ public class AdvertiserService extends Service {
                             "characteristic=%s " +
                             "preparedWrite=%b responseNeeded=%b offset=%d byte=%s",
                     requestId, characteristic.getUuid().toString(), preparedWrite, responseNeeded,
-                    offset, StringUtils.bytesToHexString(value)));
+                    offset, DigestEncodingUtils.encodeWithHex(value)));
             if (responseNeeded) {
                 mGattServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0,
                         value);

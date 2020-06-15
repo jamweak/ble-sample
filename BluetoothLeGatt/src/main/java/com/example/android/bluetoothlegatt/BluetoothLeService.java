@@ -32,7 +32,7 @@ import android.os.Binder;
 import android.os.IBinder;
 import android.util.Log;
 
-import com.sample.ble.library.utils.StringUtils;
+import com.sample.ble.library.utils.DigestEncodingUtils;
 
 import java.util.List;
 import java.util.UUID;
@@ -145,7 +145,7 @@ public class BluetoothLeService extends Service {
             // For all other profiles, writes the data formatted in HEX.
             final byte[] data = characteristic.getValue();
             if (data != null && data.length > 0) {
-                intent.putExtra(EXTRA_DATA, new String(data) + "\n" + StringUtils.bytesToHexString(data));
+                intent.putExtra(EXTRA_DATA, new String(data) + "\n" + DigestEncodingUtils.encodeWithHex(data));
             }
         }
         sendBroadcast(intent);
@@ -309,7 +309,7 @@ public class BluetoothLeService extends Service {
         mBluetoothGatt.setCharacteristicNotification(characteristic, enabled);
         mBluetoothGatt.setCharacteristicNotification(characteristic, true); // 设置监听
         characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
-        characteristic.setValue(StringUtils.getHexBytes("1234556797897"));
+        characteristic.setValue(DigestEncodingUtils.fromHexString("12345567978970"));
         mBluetoothGatt.writeCharacteristic(characteristic);
     }
 
