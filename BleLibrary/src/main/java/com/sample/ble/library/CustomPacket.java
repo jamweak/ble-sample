@@ -1,7 +1,10 @@
 package com.sample.ble.library;
 
+import android.util.Log;
+
 import com.sample.ble.library.utils.DigestEncodingUtils;
 
+import java.awt.font.TextAttribute;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
@@ -22,14 +25,25 @@ public class CustomPacket {
         return packet;
     }
 
-    public void setPacket(byte[] packet) {
-        this.packet = packet;
-    }
-
     public static Builder newPacket(byte[] data) {
         Builder builder = new Builder();
         builder.data = data;
         return builder;
+    }
+
+    public static byte[] parseData(byte[] packet) {
+        if (packet[0] == (byte) HEAD_CHANNEL_SBM_TO_WATCH) {
+            //TODO Length is uint16 type,which means it use packet[2] and packet[3], currently we only
+            // read packet[3] for Convenient
+            int dataLen = packet[3];
+            byte[] data = new byte[dataLen];
+            System.arraycopy(packet, 6, data, 0, dataLen);
+            //System.out.println(DigestEncodingUtils.encodeWithHex(data));
+            return data;
+        } else {
+            //System.out.println("Error! unexpected message: " + DigestEncodingUtils.encodeWithHex(packet));
+            return packet;
+        }
     }
 
     public static class Builder {
@@ -56,7 +70,6 @@ public class CustomPacket {
             if (++seqNumber > MAX_SEQ_NUMBER) {
                 seqNumber = 0;
             }
-//            System.out.println(DigestEncodingUtils.encodeWithHex(packet.array()));
             return packet.array();
         }
 
