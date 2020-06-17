@@ -9,6 +9,8 @@ public class CustomPacket {
     private static int HEAD_MSG_NUMBER = 0xA1;
     private static int HEAD_CHANNEL_WATCH_TO_SBM = 0x30;
     private static int HEAD_CHANNEL_SBM_TO_WATCH = 0x31;
+    private static int MAX_SEQ_NUMBER = 65535;
+    private static int seqNumber = 0;
 
     private byte[] packet;
 
@@ -46,19 +48,23 @@ public class CustomPacket {
             ByteBuffer packet = ByteBuffer.allocate(6).order(ByteOrder.LITTLE_ENDIAN);
             packet.put((byte) HEAD_CHANNEL_WATCH_TO_SBM);
             packet.put((byte) HEAD_MSG_NUMBER);
-//            int len = computeLength(data);
-            int len = 999999999;
-            System.out.println(DigestEncodingUtils.encodeWithHex(intToBytes(len)));
-            packet.put((byte) ((0xff00 & len) >> 2));
-            packet.put((byte) (0x00ff & len));
-            packet.put(DigestEncodingUtils.fromHexString("0000"));
-            System.out.println(DigestEncodingUtils.encodeWithHex(packet.array()));
+            int len = computeLength(data);
+            packet.put((byte) (len >> 8));
+            packet.put((byte) len);
+            packet.put((byte) (seqNumber >> 8));
+            packet.put((byte) seqNumber);
+            if (++seqNumber > MAX_SEQ_NUMBER) {
+                seqNumber = 0;
+            }
+//            System.out.println(DigestEncodingUtils.encodeWithHex(packet.array()));
             return packet.array();
         }
 
         private byte[] intToBytes(int intValue) {
-            return new byte[]{(byte) (intValue >> 24), (byte) (intValue >> 16), (byte) (intValue >> 8), (byte) (intValue & 0xff)};
+            return new byte[]{(byte) (intValue >> 24), (byte) (intValue >> 16),
+                    (byte) (intValue >> 8), (byte) (intValue & 0xff)};
         }
+
         private int computeLength(byte[] data) {
             String s = DigestEncodingUtils.encodeWithHex(data);
             return s.length() / 2;
